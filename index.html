@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Secret Santa Reveal</title>
+  <title>Secret Santa</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@600;700&family=Space+Grotesk:wght@400;600&display=swap" rel="stylesheet">
@@ -198,7 +198,7 @@
 
       if (!giver || !recipient) {
         root.innerHTML = `
-          <h1>Secret Santa Reveal</h1>
+          <h1>Secret Santa</h1>
           <p class="tagline">Add names to the URL to reveal a match.</p>
           <div class="error">Missing names. Add <code>?giver=Alex&recipient=Riley</code> to the URL.</div>
           <div class="chips">
@@ -210,8 +210,7 @@
       }
 
       root.innerHTML = `
-        <h1>Secret Santa Reveal</h1>
-        <p class="tagline">Wrap it up and make it special.</p>
+        <h1>Secret Santa</h1>
         <div class="reveal">
           <div class="label">Giver</div>
           <div class="name">${giver}</div>
@@ -219,7 +218,6 @@
           <div class="label">Recipient</div>
           <div class="name">${recipient}</div>
         </div>
-        <p class="hint">Share this link privately so only the giver sees it. Happy gifting!</p>
       `;
     }
 

@@ -10,6 +10,7 @@ from __future__ import annotations
 import pathlib
 import random
 import sys
+import urllib.parse
 from typing import Dict, List, Optional, Set, Tuple
 
 try:
@@ -51,10 +52,13 @@ FORBIDDEN_PAIRS: List[Tuple[str, str]] = [
 ]
 
 # Allow reciprocal gifting (A->B and B->A). Set to False to disallow.
-ALLOW_RECIPROCAL: bool = False
+ALLOW_RECIPROCAL: bool = True
 
 # Directory where QR codes will be written.
 OUTPUT_DIR = pathlib.Path(__file__).parent / "qr_codes"
+
+# Base URL for reveal page; QR codes encode this with query params.
+BASE_URL = "https://rakan959.github.io/secret-santa/index.html"
 
 
 # --- Pairing logic ---------------------------------------------------------
@@ -123,7 +127,8 @@ def generate_pairings() -> Dict[str, str]:
 
 
 def _qr_payload(giver: str, recipient: str) -> str:
-    return f"Hi {giver}, you are gifting to {recipient}. Happy holidays!"
+    query = urllib.parse.urlencode({"giver": giver, "recipient": recipient})
+    return f"{BASE_URL}?{query}"
 
 
 def _safe_filename(name: str) -> str:
