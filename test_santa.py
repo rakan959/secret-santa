@@ -1,7 +1,11 @@
 """Tests for santa.py."""
 
+import base64
+import csv
+import json
 import random
 from typing import Dict
+from urllib.parse import parse_qs, urlparse
 
 import pytest
 
@@ -94,26 +98,49 @@ def test_scalability_large_group(monkeypatch):
     assert all(giver != recipient for giver, recipient in assignment.items())
 
 
-def test_write_qr_codes_generates_expected_files(monkeypatch, tmp_path):
-    captured = {}
+def test_build_assignment_url_encodes_base64(monkeypatch):
+    monkeypatch.setattr(santa, "BASE_URL", "https://example.com/reveal")
+    url = santa.build_assignment_url("Bob", "Jim")
 
-    class FakeImage:
-        def __init__(self, payload):
-            self.payload = payload
+    parsed = urlparse(url)
+    assert parsed.scheme == "https"
+    assert parsed.netloc == "example.com"
 
-        def save(self, path):
-            captured[path.name] = self.payload
+    data_param = parse_qs(parsed.query)["data"][0]
+    padded = data_param + "=" * (-len(data_param) % 4)
+    decoded = json.loads(base64.urlsafe_b64decode(padded).decode("utf-8"))
+    assert decoded == {"giver": "Bob", "recipient": "Jim"}
 
-    def fake_make(payload):
-        return FakeImage(payload)
 
-    monkeypatch.setattr(
-        santa, "qrcode", type("Q", (), {"make": staticmethod(fake_make)})
-    )
+def test_write_csv_outputs_rows(monkeypatch, tmp_path):
+    monkeypatch.setattr(santa, "BASE_URL", "https://example.com/reveal")
+    assignments = {"Bob": "Jim", "Ann": "Zoe"}
+    out_file = tmp_path / "out.csv"
 
-    assignments = {"Bob": "Jim", "Ann-Marie": "Zoe"}
+    santa.write_csv(assignments, out_file)
 
-    santa.write_qr_codes(assignments, tmp_path)
+    with out_file.open() as f:
+        rows = list(csv.reader(f))
 
-    assert captured["Bob.png"] == santa._qr_payload("Bob", "Jim")
-    assert captured["Ann-Marie.png"] == santa._qr_payload("Ann-Marie", "Zoe")
+    assert rows[0] == ["giver", "url"]
+    body = {r[0]: r[1] for r in rows[1:]}
+    assert set(body.keys()) == {"Ann", "Bob"}
+    for giver, recipient in assignments.items():
+        assert giver in body
+        assert "data=" in body[giver]
+
+
+def test_verify_assignments_passes_and_prints(capsys):
+    assignments = {"A": "B", "B": "C", "C": "A"}
+
+    santa.verify_assignments(assignments, ["A", "B", "C"])
+
+    out = capsys.readouterr().out
+    assert "Verification passed" in out
+
+
+def test_verify_assignments_detects_missing():
+    assignments = {"A": "B"}
+
+    with pytest.raises(ValueError):
+        santa.verify_assignments(assignments, ["A", "B", "C"])

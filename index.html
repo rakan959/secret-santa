@@ -185,8 +185,26 @@
   </main>
 
   <script>
+    function decodeDataParam(value) {
+      if (!value) return null;
+      // Allow URL-safe base64 without padding.
+      const padded = value.replaceAll('-', '+').replaceAll('_', '/') + '='.repeat((4 - (value.length % 4)) % 4);
+      try {
+        const json = JSON.parse(atob(padded));
+        if (json && json.giver && json.recipient) {
+          return { giver: json.giver, recipient: json.recipient };
+        }
+      } catch (err) {
+        console.error('Failed to decode base64 data param', err);
+      }
+      return null;
+    }
+
     function getParams() {
-      const params = new URLSearchParams(window.location.search);
+      const params = new URLSearchParams(globalThis.location.search);
+      const decoded = decodeDataParam(params.get('data'));
+      if (decoded) return decoded;
+
       const giver = params.get('giver') || params.get('gifter');
       const recipient = params.get('recipient') || params.get('giftee');
       return { giver, recipient };
@@ -200,8 +218,9 @@
         root.innerHTML = `
           <h1>Secret Santa</h1>
           <p class="tagline">Add names to the URL to reveal a match.</p>
-          <div class="error">Missing names. Add <code>?giver=Alex&recipient=Riley</code> to the URL.</div>
+          <div class="error">Missing names. Expected base64 at <code>?data=...</code>, or fallback <code>?giver=Alex&recipient=Riley</code>.</div>
           <div class="chips">
+            <div class="chip">Param: data (base64 of {giver,recipient})</div>
             <div class="chip">Param: giver (or gifter)</div>
             <div class="chip">Param: recipient (or giftee)</div>
           </div>

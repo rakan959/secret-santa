@@ -1,26 +1,18 @@
-"""Secret Santa QR generator.
+"""Secret Santa link generator.
 
-Configure participants and forbidden pairs, then run the script. It creates
-QR codes (one per giver) that reveal their assigned recipient when scanned,
-so pairings stay private. Pairings are never printed to the terminal.
+Configure participants and forbidden pairs, then run the script. It creates a
+CSV mapping each giver to a private URL that embeds the assignment in base64
+for the reveal page.
 """
 
 from __future__ import annotations
 
+import base64
+import csv
+import json
 import pathlib
 import random
-import sys
-import urllib.parse
 from typing import Dict, List, Optional, Set, Tuple
-
-try:
-    import qrcode
-except ModuleNotFoundError:  # pragma: no cover - import guard
-    sys.stderr.write(
-        "The 'qrcode' package is required. Install with: pip install qrcode[pil]\n"
-    )
-    raise
-
 
 # --- Configuration ---------------------------------------------------------
 
@@ -37,7 +29,7 @@ PARTICIPANTS: List[str] = [
     "Leah",
     "Sam",
     "Sav",
-    "Allen",
+    "Alan",
     "Zoe",
 ]
 
@@ -48,16 +40,16 @@ FORBIDDEN_PAIRS: List[Tuple[str, str]] = [
     ("Rakan", "Leah"),
     ("Sam", "MaryGrace"),
     ("Zoe", "Sav"),
-    ("Libby", "Allen"),
+    ("Libby", "Alan"),
 ]
 
 # Allow reciprocal gifting (A->B and B->A). Set to False to disallow.
 ALLOW_RECIPROCAL: bool = True
 
-# Directory where QR codes will be written.
-OUTPUT_DIR = pathlib.Path(__file__).parent / "qr_codes"
+# CSV file where assignments will be written.
+OUTPUT_CSV = pathlib.Path(__file__).parent / "assignments.csv"
 
-# Base URL for reveal page; QR codes encode this with query params.
+# Base URL for reveal page; links encode assignments in base64.
 BASE_URL = "https://rakan959.github.io/secret-santa/index.html"
 
 
@@ -123,26 +115,65 @@ def generate_pairings() -> Dict[str, str]:
     )
 
 
-# --- QR generation ---------------------------------------------------------
+# --- Link generation -------------------------------------------------------
 
 
-def _qr_payload(giver: str, recipient: str) -> str:
-    query = urllib.parse.urlencode({"giver": giver, "recipient": recipient})
-    return f"{BASE_URL}?{query}"
+def build_assignment_url(giver: str, recipient: str) -> str:
+    payload = json.dumps(
+        {"giver": giver, "recipient": recipient}, separators=(",", ":")
+    )
+    token = (
+        base64.urlsafe_b64encode(payload.encode("utf-8")).decode("ascii").rstrip("=")
+    )
+    return f"{BASE_URL}?data={token}"
 
 
-def _safe_filename(name: str) -> str:
-    return "".join(ch for ch in name if ch.isalnum() or ch in {"-", "_"}) or "unknown"
+def verify_assignments(assignments: Dict[str, str], participants: List[str]) -> None:
+    participant_set = set(participants)
+    giver_set = set(assignments.keys())
+    recipient_values = list(assignments.values())
+    recipient_set = set(recipient_values)
+
+    issues = []
+
+    missing_givers = participant_set - giver_set
+    if missing_givers:
+        issues.append(f"Missing givers: {sorted(missing_givers)}")
+
+    missing_recipients = participant_set - recipient_set
+    if missing_recipients:
+        issues.append(f"Missing recipients: {sorted(missing_recipients)}")
+
+    if len(recipient_values) != len(recipient_set):
+        issues.append("Duplicate recipients detected")
+
+    extra_givers = giver_set - participant_set
+    if extra_givers:
+        issues.append(f"Unexpected givers: {sorted(extra_givers)}")
+
+    extra_recipients = recipient_set - participant_set
+    if extra_recipients:
+        issues.append(f"Unexpected recipients: {sorted(extra_recipients)}")
+
+    if issues:
+        raise ValueError("Assignment verification failed; " + "; ".join(issues))
+
+    # Print a brief summary without revealing pairings.
+    print(
+        f"Verification passed: {len(giver_set)} givers matched to {len(recipient_set)} recipients."
+    )
 
 
-def write_qr_codes(assignments: Dict[str, str], output_dir: pathlib.Path) -> None:
-    output_dir.mkdir(parents=True, exist_ok=True)
-
+def write_csv(assignments: Dict[str, str], output_csv: pathlib.Path) -> None:
+    rows = []
     for giver, recipient in assignments.items():
-        payload = _qr_payload(giver, recipient)
-        img = qrcode.make(payload)
-        filename = _safe_filename(giver)
-        img.save(output_dir / f"{filename}.png")
+        rows.append((giver, build_assignment_url(giver, recipient)))
+
+    with output_csv.open("w", newline="", encoding="utf-8") as f:
+        writer = csv.writer(f)
+        writer.writerow(["giver", "url"])
+        for giver, url in sorted(rows, key=lambda r: r[0].lower()):
+            writer.writerow([giver, url])
 
 
 # --- Entry point -----------------------------------------------------------
@@ -153,8 +184,9 @@ def main() -> None:
         raise ValueError("Participant names must be unique.")
 
     assignments = generate_pairings()
-    write_qr_codes(assignments, OUTPUT_DIR)
-    print(f"Created {len(assignments)} QR codes in {OUTPUT_DIR}")
+    verify_assignments(assignments, PARTICIPANTS)
+    write_csv(assignments, OUTPUT_CSV)
+    print(f"Wrote {len(assignments)} assignment links to {OUTPUT_CSV}")
 
 
 if __name__ == "__main__":
